@@ -3,26 +3,28 @@
 <head>
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
-<meta name="description" content="A 3D browser racing game with lap timing, a best-lap ghost and touch or keyboard controls.">
+<meta name="description" content="A 3D landscape racing game with lap timing and a best-lap ghost.">
+<meta name="theme-color" content="#0f1a2c">
 <style>:root{color-scheme:light;padding-top:env(safe-area-inset-top,0px);padding-bottom:env(safe-area-inset-bottom,0px)}body{margin:0}[hidden]{display:none!important}</style>
 <title>Apex Circuit</title>
 <link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Saira+Semi+Condensed:wght@400;500;600;700&display=swap">
 <style>
-/* Layout: full-bleed 3D chase view with glass HUD: lap panel top-left, speed/rpm/gear top-centre, buttons + minimap top-right, thumb pads bottom corners. */
+/* Landscape only. The HUD is laid out in "u" units (1u is 1/108 of the width, or 1/58 of the height, whichever is smaller),
+   so the same arrangement fits every phone: lap panel left, speed and gear centre, buttons and map right, thumb pads at the corners. */
 :root {
   color-scheme: dark;
   --sky: #b9cde0;
   --glass: rgba(255, 255, 255, 0.2);
   --glass-edge: rgba(255, 255, 255, 0.4);
   --ink: #ffffff;
-  --ink-dim: rgba(255, 255, 255, 0.76);
+  --ink-dim: rgba(255, 255, 255, 0.78);
   --accent: #ffa629;
+  --accent-ink: #2a1800;
   --rpm: #3db4ff;
   --rpm-hot: #ff5a4a;
-  --panel: rgba(16, 26, 44, 0.82);
-  --u: clamp(3.6px, min(1vw, 1.6vh), 8px);
-  --pad: max(16px, calc(var(--u) * 2.6));
-  --key: max(48px, calc(var(--u) * 12.5));
+  --navy: #0f1a2c;
+  --panel: rgba(16, 26, 44, 0.88);
+  --u: clamp(3.6px, min(0.926vw, 1.72vh), 8px);
   --font: 'Saira Semi Condensed', 'Arial Narrow', system-ui, sans-serif;
 }
 * { box-sizing: border-box; -webkit-tap-highlight-color: transparent; }
@@ -38,119 +40,127 @@ body {
   -webkit-user-select: none;
 }
 #app {
+  --pad: calc(var(--u) * 2.6);
+  --padL: max(var(--pad), env(safe-area-inset-left, 0px));
+  --padR: max(var(--pad), env(safe-area-inset-right, 0px));
+  --key: max(48px, calc(var(--u) * 11.5));
+  --btn: max(44px, calc(var(--u) * 8));
   position: relative; width: 100%; height: 100%; overflow: hidden; background: var(--sky);
-  --pad: max(16px, calc(var(--u) * 2.6));
-  --key: max(48px, calc(var(--u) * 12.5));
 }
 #view { position: absolute; inset: 0; width: 100%; height: 100%; display: block; }
+#app:not(.playing) .hud { visibility: hidden; }
 
 .glass {
   background: var(--glass);
   border: 1px solid var(--glass-edge);
   -webkit-backdrop-filter: blur(10px) saturate(1.25);
   backdrop-filter: blur(10px) saturate(1.25);
-  border-radius: calc(var(--u) * 3);
-  box-shadow: 0 calc(var(--u) * 0.6) calc(var(--u) * 2.4) rgba(20, 40, 70, 0.25);
+  border-radius: calc(var(--u) * 2.6);
+  box-shadow: 0 calc(var(--u) * 0.5) calc(var(--u) * 2) rgba(20, 40, 70, 0.25);
 }
-.hud, .hud * { text-shadow: 0 1px 3px rgba(10, 30, 60, 0.45); }
-.hud { position: absolute; inset: 0; padding: var(--pad); pointer-events: none; }
-.top { display: grid; grid-template-columns: 1fr auto 1fr; align-items: start; gap: calc(var(--u) * 2); }
-.left { display: flex; gap: calc(var(--u) * 2); align-items: flex-start; min-width: 0; }
-.center { display: flex; gap: calc(var(--u) * 2); align-items: flex-start; justify-content: center; }
-.right { display: flex; flex-direction: column; align-items: flex-end; gap: calc(var(--u) * 2); }
-.right .row { display: flex; gap: calc(var(--u) * 2); }
+.hud, .hud * { text-shadow: 0 1px 3px rgba(10, 30, 60, 0.5); }
+.hud { position: absolute; inset: 0; padding: var(--pad) var(--padR) var(--pad) var(--padL); pointer-events: none; }
+.top { display: grid; grid-template-columns: auto 1fr auto; align-items: start; gap: calc(var(--u) * 2); }
+.left { display: flex; flex-direction: column; align-items: flex-start; gap: calc(var(--u) * 1.6); }
+.center { display: flex; gap: calc(var(--u) * 1.6); align-items: flex-start; justify-content: center; min-width: 0; }
+.right { display: flex; flex-direction: column; align-items: flex-end; gap: calc(var(--u) * 1.6); }
+.right .row { display: flex; gap: calc(var(--u) * 1.2); }
 
 .fps {
   background: #0d1a2c; color: #6ae6ee; border: 1px solid #1a3350;
-  width: calc(var(--u) * 14); font: 600 calc(var(--u) * 1.9) / 1.2 var(--font);
-  padding: 0; text-shadow: none; flex: none;
+  width: calc(var(--u) * 13); font: 600 calc(var(--u) * 1.9) / 1.2 var(--font);
+  text-shadow: none !important;
 }
-.fps span { display: block; padding: calc(var(--u) * 0.5) calc(var(--u) * 0.8); white-space: nowrap; }
-.fps canvas { display: block; width: 100%; height: calc(var(--u) * 5.2); }
+.fps span { display: block; padding: calc(var(--u) * 0.5) calc(var(--u) * 0.8); white-space: nowrap; text-shadow: none !important; }
+.fps canvas { display: block; width: 100%; height: calc(var(--u) * 4.2); }
 .fps[hidden] { display: none !important; }
 
-.lap { width: calc(var(--u) * 38); padding: calc(var(--u) * 1.6) calc(var(--u) * 2.4) calc(var(--u) * 1.8); flex: none; }
-.lap .cols { display: grid; grid-template-columns: 1fr 1px 1fr; gap: calc(var(--u) * 1.6); text-align: center; align-items: center; }
+.lap { width: calc(var(--u) * 36); padding: calc(var(--u) * 1.5) calc(var(--u) * 2.2) calc(var(--u) * 1.7); }
+.lap .cols { display: grid; grid-template-columns: 1fr 1px 1fr; gap: calc(var(--u) * 1.4); text-align: center; align-items: center; }
+.lap .cols > div { min-width: 0; }
 .lap .sep { width: 1px; height: 80%; background: var(--glass-edge); }
-.lap .lbl { font-size: calc(var(--u) * 3); color: var(--ink-dim); font-weight: 500; letter-spacing: 0.02em; }
-.lap .val { font-size: calc(var(--u) * 4.6); font-weight: 600; font-variant-numeric: tabular-nums; letter-spacing: 0.01em; }
-.lap .bar { margin-top: calc(var(--u) * 1.4); height: calc(var(--u) * 0.9); border-radius: 99px; background: rgba(20, 24, 40, 0.55); overflow: hidden; }
+.lap .lbl { font-size: calc(var(--u) * 2.8); color: var(--ink-dim); font-weight: 500; letter-spacing: 0.02em; white-space: nowrap; }
+.lap .val { font-size: calc(var(--u) * 3.8); font-weight: 600; font-variant-numeric: tabular-nums; white-space: nowrap; }
+.lap .bar { margin-top: calc(var(--u) * 1.3); height: calc(var(--u) * 0.9); border-radius: 99px; background: rgba(20, 24, 40, 0.55); overflow: hidden; }
 .lap .bar i { display: block; height: 100%; width: 0; background: var(--accent); border-radius: 99px; }
 
-.speed { text-align: center; width: calc(var(--u) * 28); }
-.speed .num { font-size: calc(var(--u) * 7.4); font-weight: 600; line-height: 1; font-variant-numeric: tabular-nums; }
-.speed .tank { margin: calc(var(--u) * 1) auto calc(var(--u) * 1.2); width: 86%; height: calc(var(--u) * 1.7); border-radius: 99px; overflow: hidden;
+.speed { text-align: center; width: calc(var(--u) * 22); }
+.speed .num { font-size: calc(var(--u) * 7.2); font-weight: 600; line-height: 1; font-variant-numeric: tabular-nums; }
+.speed .tank { margin: calc(var(--u) * 1) auto calc(var(--u) * 1.1); width: 92%; height: calc(var(--u) * 1.6); border-radius: 99px; overflow: hidden;
   background: linear-gradient(90deg, rgba(22, 26, 44, 0.62) 0 87%, rgba(84, 24, 34, 0.9) 87%); }
 .speed .tank i { display: block; height: 100%; width: 12%; background: var(--rpm); border-radius: 99px; }
 .speed .tank i.hot { background: var(--rpm-hot); }
-.speed .rpm { font-size: calc(var(--u) * 3.1); color: var(--ink-dim); font-variant-numeric: tabular-nums; }
+.speed .rpm { font-size: calc(var(--u) * 2.8); color: var(--ink-dim); font-variant-numeric: tabular-nums; white-space: nowrap; }
 
 .gear { display: flex; flex-direction: column; align-items: center; gap: calc(var(--u) * 0.8); }
-.gear .box { width: calc(var(--u) * 10); height: calc(var(--u) * 10); display: grid; place-items: center; font-size: calc(var(--u) * 5.2); font-weight: 600; }
-.gear .mode { font-size: calc(var(--u) * 3); color: var(--ink-dim); }
+.gear .box { width: calc(var(--u) * 8.5); height: calc(var(--u) * 8.5); display: grid; place-items: center; font-size: calc(var(--u) * 4.6); font-weight: 600; }
+.gear .mode { font-size: calc(var(--u) * 2.7); color: var(--ink-dim); }
 
-.btn { pointer-events: auto; width: calc(var(--u) * 10); height: calc(var(--u) * 10); min-width: 44px; min-height: 44px; display: grid; place-items: center; padding: 0; color: var(--ink); cursor: pointer; font: inherit; }
+.btn { pointer-events: auto; width: var(--btn); height: var(--btn); display: grid; place-items: center; padding: 0; color: var(--ink); cursor: pointer; font: inherit; }
 .btn svg { width: 46%; height: 46%; fill: none; stroke: currentColor; stroke-width: 2.1; stroke-linecap: round; stroke-linejoin: round; }
 .btn:active { background: rgba(255, 255, 255, 0.36); }
-.btn:focus-visible, .key:focus-visible, select:focus-visible, input:focus-visible { outline: 2px solid var(--accent); outline-offset: 2px; }
+.btn:focus-visible, .key:focus-visible, .go:focus-visible, select:focus-visible, input:focus-visible { outline: 2px solid var(--accent); outline-offset: 2px; }
 
-#mini { width: calc(var(--u) * 30); height: calc(var(--u) * 30); display: block; }
+#mini { width: calc(var(--u) * 22); height: calc(var(--u) * 22); display: block; }
 
 .touch { display: none; }
 @media (pointer: coarse) { .touch { display: flex; } .kbhint { display: none !important; } }
-.pad { position: absolute; bottom: var(--pad); display: flex; gap: calc(var(--u) * 2); pointer-events: none; }
-.pad.l { left: var(--pad); flex-direction: column; }
-.pad.r { right: var(--pad); }
+.pad { position: absolute; bottom: var(--pad); display: flex; gap: calc(var(--u) * 1.6); pointer-events: none; }
+.pad.l { left: var(--padL); flex-direction: column; }
+.pad.r { right: var(--padR); }
 .key { pointer-events: auto; width: var(--key); height: var(--key); display: grid; place-items: center; padding: 0; color: var(--ink); touch-action: none; cursor: pointer; }
 .key svg { width: 42%; height: 42%; fill: none; stroke: currentColor; stroke-width: 2.4; stroke-linecap: round; stroke-linejoin: round; opacity: 0.85; }
 .key.on { background: rgba(255, 255, 255, 0.42); transform: scale(0.96); }
 
-.toast { position: absolute; left: 50%; top: calc(var(--pad) + var(--u) * 17); transform: translateX(-50%); padding: calc(var(--u) * 1.2) calc(var(--u) * 3); border-radius: 99px; font-size: calc(var(--u) * 3.6); font-weight: 600; font-variant-numeric: tabular-nums; white-space: nowrap; opacity: 0; transition: opacity 0.25s; }
+.toast { position: absolute; left: 50%; top: calc(var(--pad) + var(--u) * 16.5); transform: translateX(-50%); padding: calc(var(--u) * 1.1) calc(var(--u) * 3); border-radius: 99px; font-size: calc(var(--u) * 3.4); font-weight: 600; font-variant-numeric: tabular-nums; white-space: nowrap; opacity: 0; transition: opacity 0.25s; }
 .toast.show { opacity: 1; }
 .toast b { color: var(--accent); font-weight: 700; margin-left: 0.5em; }
 
-.hint { position: absolute; left: 50%; bottom: calc(var(--pad) + var(--u) * 4); transform: translateX(-50%); padding: calc(var(--u) * 1.2) calc(var(--u) * 3); border-radius: 99px; font-size: calc(var(--u) * 3.4); font-weight: 500; text-align: center; max-width: calc(100% - 2 * var(--pad)); transition: opacity 0.3s; }
+.hint { position: absolute; left: 50%; bottom: calc(var(--pad) + var(--u) * 3); transform: translateX(-50%); padding: calc(var(--u) * 1.1) calc(var(--u) * 3); border-radius: calc(var(--u) * 2.6); font-size: calc(var(--u) * 3.1); font-weight: 500; text-align: center; width: calc(var(--u) * 46); max-width: calc(100% - var(--u) * 54); }
 .hint[hidden] { display: none !important; }
-.hint.kbhint { display: block; }
 .touchhint { display: none; }
 @media (pointer: coarse) { .touchhint { display: inline; } .keyhint { display: none; } }
 
-.sheet { position: absolute; inset: 0; display: grid; place-items: center; background: rgba(10, 20, 36, 0.5); padding: var(--pad); z-index: 5; }
+/* Intro and rotate prompt */
+.intro { position: absolute; inset: 0; z-index: 8; display: flex; align-items: center; padding: var(--pad) var(--padR) var(--pad) var(--padL);
+  background: linear-gradient(90deg, rgba(11, 20, 36, 0.9) 0%, rgba(11, 20, 36, 0.62) 40%, rgba(11, 20, 36, 0.06) 78%); }
+.intro[hidden] { display: none !important; }
+.intro .welcome { display: flex; flex-direction: column; align-items: flex-start; gap: calc(var(--u) * 1.6); padding-left: calc(var(--u) * 3); max-width: 58%; }
+.intro .kicker { font-size: calc(var(--u) * 2.7); letter-spacing: 0.3em; text-transform: uppercase; color: var(--accent); font-weight: 600; }
+.intro .title { margin: 0; font-size: calc(var(--u) * 10.5); line-height: 0.9; font-weight: 700; letter-spacing: 0.02em; text-transform: uppercase; transform: skewX(-8deg); transform-origin: left bottom; text-shadow: 0 calc(var(--u) * 0.5) calc(var(--u) * 2) rgba(0, 0, 0, 0.45); }
+.intro .title span { display: block; }
+.intro .stripe { height: calc(var(--u) * 1.2); width: calc(var(--u) * 20); background: repeating-conic-gradient(#f4f3ef 0 25%, #16202e 0 50%) 0 0 / calc(var(--u) * 1.2) calc(var(--u) * 1.2); border-radius: 2px; }
+.intro .tag { margin: 0; font-size: calc(var(--u) * 3); color: var(--ink-dim); max-width: calc(var(--u) * 62); line-height: 1.25; }
+.intro .go { font: inherit; font-weight: 700; font-size: calc(var(--u) * 3.8); letter-spacing: 0.08em; text-transform: uppercase; padding: calc(var(--u) * 1.7) calc(var(--u) * 6); min-height: 44px; border: 0; border-radius: 99px; background: var(--accent); color: var(--accent-ink); cursor: pointer; box-shadow: 0 calc(var(--u) * 0.6) calc(var(--u) * 2) rgba(0, 0, 0, 0.4); text-shadow: none; }
+.intro .go:active { transform: scale(0.97); }
+.intro .meta { font-size: calc(var(--u) * 2.6); color: var(--ink-dim); font-variant-numeric: tabular-nums; line-height: 1.5; }
+.intro .meta b { color: var(--ink); font-weight: 600; }
+.intro .rotate { display: none; margin: auto; text-align: center; flex-direction: column; align-items: center; gap: 16px; max-width: 360px; padding: 0 24px; }
+.intro .rotate h2 { margin: 0; font-size: 26px; font-weight: 600; letter-spacing: 0.02em; text-wrap: balance; }
+.intro .rotate p { margin: 0; font-size: 15px; color: var(--ink-dim); line-height: 1.4; }
+.intro .phone { width: 46px; height: 80px; border: 4px solid #fff; border-radius: 12px; position: relative; animation: turn 2.8s ease-in-out infinite; margin-bottom: 14px; }
+.intro .phone::after { content: ''; position: absolute; left: 50%; bottom: 6px; width: 14px; height: 4px; margin-left: -7px; border-radius: 2px; background: var(--accent); }
+@keyframes turn { 0%, 18% { transform: rotate(0deg); } 62%, 100% { transform: rotate(-90deg); } }
+@media (prefers-reduced-motion: reduce) { .intro .phone { animation: none; transform: rotate(-90deg); } }
+.intro[data-state="welcome"] .rotate { display: none; }
+.intro[data-state="rotate"] { background: var(--navy); justify-content: center; }
+.intro[data-state="rotate"] .welcome { display: none; }
+.intro[data-state="rotate"] .rotate { display: flex; }
+
+.sheet { position: absolute; inset: 0; display: grid; place-items: center; background: rgba(10, 20, 36, 0.5); padding: var(--pad) var(--padR) var(--pad) var(--padL); z-index: 5; }
 .sheet[hidden] { display: none !important; }
-.panel { width: min(100%, 420px); background: var(--panel); border: 1px solid rgba(255, 255, 255, 0.18); border-radius: 16px; padding: 18px 20px 20px; font-size: 16px; -webkit-backdrop-filter: blur(14px); backdrop-filter: blur(14px); max-height: 100%; overflow: auto; }
-.panel h2 { margin: 0 0 10px; font-size: 22px; font-weight: 600; letter-spacing: 0.02em; text-wrap: balance; }
-.panel .row { display: flex; justify-content: space-between; align-items: center; gap: 16px; padding: 9px 0; border-top: 1px solid rgba(255, 255, 255, 0.1); }
+.panel { width: min(100%, 660px); background: var(--panel); border: 1px solid rgba(255, 255, 255, 0.18); border-radius: 16px; padding: 16px 20px 18px; font-size: 16px; -webkit-backdrop-filter: blur(14px); backdrop-filter: blur(14px); max-height: 100%; overflow: auto; }
+.panel h2 { margin: 0 0 6px; font-size: 22px; font-weight: 600; letter-spacing: 0.02em; text-wrap: balance; }
+.panel .rows { display: grid; grid-template-columns: 1fr 1fr; column-gap: 28px; }
+@media (max-width: 560px) { .panel .rows { grid-template-columns: 1fr; } }
+.panel .row { display: flex; justify-content: space-between; align-items: center; gap: 16px; padding: 8px 0; border-top: 1px solid rgba(255, 255, 255, 0.1); }
 .panel .row small { display: block; color: var(--ink-dim); font-size: 13px; }
 .panel label { min-width: 0; }
 .panel input[type=checkbox] { width: 22px; height: 22px; accent-color: var(--accent); flex: none; }
 .panel select { font: inherit; background: rgba(255, 255, 255, 0.12); color: var(--ink); border: 1px solid rgba(255, 255, 255, 0.25); border-radius: 8px; padding: 6px 8px; }
 .panel select option { color: #111; }
-.panel .done { margin-top: 14px; width: 100%; font: inherit; font-weight: 600; padding: 10px; border-radius: 10px; border: 0; background: var(--accent); color: #2a1800; cursor: pointer; text-shadow: none; }
+.panel .done { margin-top: 12px; width: 100%; font: inherit; font-weight: 600; padding: 10px; min-height: 44px; border-radius: 10px; border: 0; background: var(--accent); color: var(--accent-ink); cursor: pointer; }
 .panel * { text-shadow: none; }
-
-/* Portrait layout: lap and speed stack on the left, buttons and a smaller map on the right. */
-#app[data-layout="port"] .fps { display: none; }
-#app[data-layout="port"] .top { grid-template-columns: 1fr auto; grid-template-areas: "lap right" "center right"; row-gap: calc(var(--u) * 2); }
-#app[data-layout="port"] .left { grid-area: lap; }
-#app[data-layout="port"] .center { grid-area: center; justify-content: flex-start; gap: calc(var(--u) * 1.6); }
-#app[data-layout="port"] .right { grid-area: right; gap: calc(var(--u) * 1.4); }
-#app[data-layout="port"] .right .row { gap: calc(var(--u) * 1.2); flex-wrap: wrap; justify-content: flex-end; max-width: calc(var(--u) * 16.2); }
-#app[data-layout="port"] .btn { width: calc(var(--u) * 7.4); height: calc(var(--u) * 7.4); }
-#app[data-layout="port"] #mini { width: calc(var(--u) * 18); height: calc(var(--u) * 18); }
-#app[data-layout="port"] .lap { width: 100%; flex: 1; min-width: 0; padding: calc(var(--u) * 1.4) calc(var(--u) * 2); }
-#app[data-layout="port"] .lap .cols { display: flex; flex-direction: column; gap: calc(var(--u) * 0.3); text-align: left; }
-#app[data-layout="port"] .lap .cols > div:not(.sep) { display: flex; justify-content: space-between; align-items: baseline; gap: calc(var(--u) * 1.5); }
-#app[data-layout="port"] .lap .sep { display: none; }
-#app[data-layout="port"] .lap .lbl { font-size: calc(var(--u) * 3.3); }
-#app[data-layout="port"] .lap .val { font-size: calc(var(--u) * 4); }
-#app[data-layout="port"] .speed { width: calc(var(--u) * 18.5); }
-#app[data-layout="port"] .speed .num { font-size: calc(var(--u) * 6.4); }
-#app[data-layout="port"] .speed .tank { width: 100%; }
-#app[data-layout="port"] .speed .rpm { font-size: calc(var(--u) * 2.8); }
-#app[data-layout="port"] .gear .box { width: calc(var(--u) * 8); height: calc(var(--u) * 8); font-size: calc(var(--u) * 4.4); }
-#app[data-layout="port"] .gear .mode { font-size: calc(var(--u) * 2.8); }
-#app[data-layout="port"] .toast { top: calc(var(--pad) + var(--u) * 40); }
-#app[data-layout="port"] .hint { bottom: calc(var(--pad) + var(--key) * 2 + var(--u) * 5); }
 </style>
 
 </head>
@@ -161,7 +171,6 @@ body {
   <div class="hud">
     <div class="top">
       <div class="left">
-        <div class="fps" id="fps"><span id="fpsText">60 FPS</span><canvas id="fpsGraph" width="112" height="36"></canvas></div>
         <section class="glass lap" aria-label="Lap times">
           <div class="cols">
             <div><div class="lbl" id="lapLbl">Lap 1</div><div class="val" id="lapTime">00:00.00</div></div>
@@ -170,6 +179,7 @@ body {
           </div>
           <div class="bar"><i id="lapBar"></i></div>
         </section>
+        <div class="fps" id="fps"><span id="fpsText">60 FPS</span><canvas id="fpsGraph" width="112" height="36"></canvas></div>
       </div>
 
       <div class="center">
@@ -187,7 +197,6 @@ body {
       <div class="right">
         <div class="row">
           <button class="glass btn" id="btnRestart" aria-label="Restart"><svg viewBox="0 0 24 24"><path d="M20 12a8 8 0 1 1-2.6-5.9M20 4v5h-5"/></svg></button>
-          <button class="glass btn" id="btnLayout" aria-label="Switch between landscape and portrait layout" title="Switch layout"><svg viewBox="0 0 24 24"><rect x="9" y="2.5" width="6" height="11" rx="1.6"/><path d="M4 17.5c2.4 2.6 13.6 2.6 16 0M17.4 15.3l2.6 2.2-3.2 1"/></svg></button>
           <button class="glass btn" id="btnSettings" aria-label="Settings"><svg viewBox="0 0 24 24"><path d="M4 7h9M19 7h1M4 17h1M11 17h9"/><circle cx="16" cy="7" r="2.4"/><circle cx="8" cy="17" r="2.4"/></svg></button>
         </div>
         <canvas id="mini" width="300" height="300" aria-label="Track map"></canvas>
@@ -205,24 +214,40 @@ body {
 
     <div class="glass toast" id="toast" role="status"></div>
     <div class="glass hint" id="hint">
-      <span class="keyhint">Hold <b>&uarr;</b> or <b>W</b> to drive &middot; <b>&larr; &rarr;</b> steer &middot; <b>&darr;</b> brake &middot; <b>R</b> restart</span>
+      <span class="keyhint">Hold <b>&uarr;</b> or <b>W</b> to drive, <b>&larr; &rarr;</b> to steer, <b>&darr;</b> to brake, <b>R</b> to restart</span>
       <span class="touchhint">Hold the up key to start driving</span>
+    </div>
+  </div>
+
+  <div class="intro" id="intro" data-state="welcome">
+    <div class="welcome">
+      <div class="kicker">Time attack</div>
+      <h1 class="title"><span>Apex</span><span>Circuit</span></h1>
+      <div class="stripe"></div>
+      <p class="tag">One car, one track. Chase your best lap. Race your own ghost.</p>
+      <button class="go" id="btnStart">Start driving</button>
+      <div class="meta" id="introMeta"></div>
+    </div>
+    <div class="rotate" role="alert">
+      <div class="phone" aria-hidden="true"></div>
+      <h2>Turn your phone sideways</h2>
+      <p>Apex Circuit plays in landscape. If the screen will not turn, switch off Portrait Orientation Lock in Control Center on iPhone, or turn on Auto-rotate on Android.</p>
     </div>
   </div>
 
   <div class="sheet" id="sheet" hidden>
     <div class="panel" role="dialog" aria-labelledby="setTitle">
       <h2 id="setTitle">Settings</h2>
-      <div class="row"><label for="setLayout">Screen layout<small>Auto follows your phone. Landscape or Portrait turns the game to match, handy if rotation is locked.</small></label>
-        <select id="setLayout"><option value="auto">Auto</option><option value="land">Landscape</option><option value="port">Portrait</option></select></div>
-      <div class="row"><label for="setGhost">Ghost car<small>Replays your best lap in blue</small></label><input type="checkbox" id="setGhost"></div>
-      <div class="row"><label for="setFps">Frame rate meter</label><input type="checkbox" id="setFps"></div>
-      <div class="row"><label for="setSound">Engine sound</label><input type="checkbox" id="setSound"></div>
-      <div class="row"><label for="setShadows">Shadows</label><input type="checkbox" id="setShadows"></div>
-      <div class="row"><label for="setHq">Sharp rendering<small>Turn off if the game stutters</small></label><input type="checkbox" id="setHq"></div>
-      <div class="row"><label for="setTrans">Gearbox<small>Manual shifts with Q and E on a keyboard</small></label>
-        <select id="setTrans"><option value="auto">Auto</option><option value="manual">Manual</option></select></div>
-      <div class="row"><label>Best lap<small id="bestInfo">No lap set yet</small></label></div>
+      <div class="rows">
+        <div class="row"><label for="setGhost">Ghost car<small>Replays your best lap in blue</small></label><input type="checkbox" id="setGhost"></div>
+        <div class="row"><label for="setFps">Frame rate meter</label><input type="checkbox" id="setFps"></div>
+        <div class="row"><label for="setSound">Engine sound</label><input type="checkbox" id="setSound"></div>
+        <div class="row"><label for="setShadows">Shadows</label><input type="checkbox" id="setShadows"></div>
+        <div class="row"><label for="setHq">Sharp rendering<small>Turn off if the game stutters</small></label><input type="checkbox" id="setHq"></div>
+        <div class="row"><label for="setTrans">Gearbox<small>Manual shifts with Q and E on a keyboard</small></label>
+          <select id="setTrans"><option value="auto">Auto</option><option value="manual">Manual</option></select></div>
+        <div class="row"><label>Best lap<small id="bestInfo">No lap set yet</small></label></div>
+      </div>
       <button class="done" id="setDone">Back to the track</button>
     </div>
   </div>
@@ -243,7 +268,7 @@ body {
   var wrap = function (a) { a = a % TAU; if (a > Math.PI) a -= TAU; if (a < -Math.PI) a += TAU; return a; };
 
   /* ---------- settings ---------- */
-  var S = { fps: true, sound: true, manual: false, shadows: true, hq: true, ghost: true, layout: 'auto' };
+  var S = { fps: true, sound: true, manual: false, shadows: true, hq: true, ghost: true };
   try { Object.assign(S, JSON.parse(localStorage.getItem('apex.settings') || '{}')); } catch (e) {}
   function saveS() { try { localStorage.setItem('apex.settings', JSON.stringify(S)); } catch (e) {} }
   var best = null;
@@ -595,7 +620,9 @@ body {
   var GT = [20, 34, 47, 59, 69, 78];
   var car = { x: 0, z: 0, h: 0, v: 0, steer: 0, idx: 0, d: 0, gear: 1, shiftCd: 0, rpm: 1000, spin: 0, roll: 0, pitch: 0, lastA: 0 };
   var keys = { up: 0, down: 0, left: 0, right: 0 };
-  var lap = 1, lapT = 0, running = false, passedHalf = false, paused = false;
+  var lap = 1, lapT = 0, running = false, passedHalf = false, paused = true;
+  var started = false, gate = true, sheetOpen = false, introT = 0;
+  function setPaused() { paused = sheetOpen || gate; }
   var camH = 0;
 
   /* ---------- ghost (best lap replay) ---------- */
@@ -766,7 +793,11 @@ body {
 
   var map = { ArrowUp: 'up', KeyW: 'up', ArrowDown: 'down', KeyS: 'down', Space: 'down', ArrowLeft: 'left', KeyA: 'left', ArrowRight: 'right', KeyD: 'right' };
   window.addEventListener('keydown', function (e) {
-    if (paused) { if (e.code === 'Escape') closeSheet(); return; }
+    if (!started) {
+      if ((e.code === 'Enter' || e.code === 'Space') && intro.getAttribute('data-state') === 'welcome') { e.preventDefault(); startGame(); }
+      return;
+    }
+    if (paused) { if (e.code === 'Escape' && sheetOpen) closeSheet(); return; }
     var m = map[e.code];
     if (m) { keys[m] = 1; initAudio(); e.preventDefault(); return; }
     if (e.code === 'KeyR') reset();
@@ -791,7 +822,7 @@ body {
   /* ---------- settings sheet ---------- */
   var sheet = $('sheet');
   function syncSheet() {
-    $('setLayout').value = S.layout; $('setGhost').checked = S.ghost; $('setFps').checked = S.fps; $('setSound').checked = S.sound; $('setShadows').checked = S.shadows; $('setHq').checked = S.hq;
+    $('setGhost').checked = S.ghost; $('setFps').checked = S.fps; $('setSound').checked = S.sound; $('setShadows').checked = S.shadows; $('setHq').checked = S.hq;
     $('setTrans').value = S.manual ? 'manual' : 'auto';
     $('bestInfo').textContent = best === null ? 'No lap set yet' : fmt(best);
   }
@@ -801,17 +832,11 @@ body {
     $('gearMode').textContent = S.manual ? 'Manual' : 'Auto';
     resize();
   }
-  function openSheet() { paused = true; syncSheet(); sheet.hidden = false; keys.up = keys.down = keys.left = keys.right = 0; }
-  function closeSheet() { paused = false; sheet.hidden = true; last = performance.now(); }
+  function openSheet() { sheetOpen = true; setPaused(); syncSheet(); sheet.hidden = false; keys.up = keys.down = keys.left = keys.right = 0; }
+  function closeSheet() { sheetOpen = false; setPaused(); sheet.hidden = true; last = performance.now(); }
   $('btnSettings').addEventListener('click', openSheet);
   $('setDone').addEventListener('click', closeSheet);
   $('btnRestart').addEventListener('click', reset);
-  $('btnLayout').addEventListener('click', function () {
-    S.layout = app.getAttribute('data-layout') === 'land' ? 'port' : 'land';
-    saveS(); $('setLayout').value = S.layout; resize();
-    toast(S.layout === 'port' ? 'Portrait layout' : 'Landscape layout');
-  });
-  $('setLayout').addEventListener('change', function (e) { S.layout = e.target.value; saveS(); resize(); });
   $('setGhost').addEventListener('change', function (e) { S.ghost = e.target.checked; saveS(); });
   $('setFps').addEventListener('change', function (e) { S.fps = e.target.checked; saveS(); applyS(); });
   $('setSound').addEventListener('change', function (e) { S.sound = e.target.checked; saveS(); if (S.sound) initAudio(); });
@@ -893,40 +918,72 @@ body {
     wheelSpin.forEach(function (w) { w.rotation.x = car.spin; });
     wheelsF.forEach(function (w) { w.rotation.y = -car.steer * 0.35; });
 
-    camH += wrap(car.h - camH) * Math.min(1, dt * (car.v >= 0 ? 4.5 : 10));
-    var sp = Math.abs(car.v), dist = 6.8 + sp * 0.012, hgt = 2.5 + sp * 0.004;
-    camera.position.set(car.x - Math.sin(camH) * dist, hgt, car.z - Math.cos(camH) * dist);
-    camera.lookAt(car.x + Math.sin(camH) * 9, 1.1, car.z + Math.cos(camH) * 9);
-    var base = camera.aspect < 1 ? 78 : 62, fov = base + 11 * Math.min(1, sp / 80);
+    var sp = Math.abs(car.v), fov;
+    if (!started) {
+      introT += dt;
+      var ia = car.h + Math.PI + 0.7 + Math.sin(introT * 0.35) * 0.55, IR = 8.6;
+      camera.position.set(car.x + Math.sin(ia) * IR, 2.3, car.z + Math.cos(ia) * IR);
+      camera.lookAt(car.x - Math.cos(ia) * 2.9, 0.85, car.z + Math.sin(ia) * 2.9);
+      fov = 46;
+    } else {
+      camH += wrap(car.h - camH) * Math.min(1, dt * (car.v >= 0 ? 4.5 : 10));
+      var dist = 6.8 + sp * 0.012, hgt = 2.5 + sp * 0.004;
+      camera.position.set(car.x - Math.sin(camH) * dist, hgt, car.z - Math.cos(camH) * dist);
+      camera.lookAt(car.x + Math.sin(camH) * 9, 1.1, car.z + Math.cos(camH) * 9);
+      fov = (camera.aspect < 1 ? 70 : 62) + 11 * Math.min(1, sp / 80);
+    }
     if (Math.abs(camera.fov - fov) > 0.05) { camera.fov = fov; camera.updateProjectionMatrix(); }
     sky.position.copy(camera.position);
     sun.position.set(car.x + sunOff.x, sunOff.y, car.z + sunOff.z); sun.target.position.set(car.x, 0, car.z);
     renderer.render(scene, camera);
   }
 
-  // Picks the HUD layout. If it differs from the screen's shape, the whole game is turned 90 degrees.
-  function layout() {
-    var bw = document.body.clientWidth || window.innerWidth, bh = document.body.clientHeight || window.innerHeight;
-    var shape = bw >= bh ? 'land' : 'port';
-    var want = S.layout === 'land' || S.layout === 'port' ? S.layout : shape;
-    var rot = want !== shape, w = rot ? bh : bw, h = rot ? bw : bh, st = app.style;
-    app.setAttribute('data-layout', want);
-    if (rot) {
-      st.position = 'absolute'; st.left = '0'; st.top = '0'; st.width = w + 'px'; st.height = h + 'px';
-      st.transformOrigin = '0 0'; st.transform = 'translate(' + bw + 'px,0) rotate(90deg)';
-    } else {
-      st.position = 'relative'; st.left = ''; st.top = ''; st.width = '100%'; st.height = '100%';
-      st.transformOrigin = ''; st.transform = 'none';
-    }
-    var u = want === 'land' ? Math.min(w / 100, h * 0.016) : Math.min(w / 60, h / 120);
-    st.setProperty('--u', clamp(u, 3.6, 8).toFixed(2) + 'px');
+  var intro = $('intro');
+  var coarse = !!(window.matchMedia && window.matchMedia('(pointer: coarse)').matches);
+  function introMeta() {
+    $('introMeta').innerHTML = (best !== null ? 'Best lap <b>' + fmt(best) + '</b><br>' : '') +
+      (coarse ? 'Gas and brake on the left, steering on the right' : 'Arrow keys or WASD to drive');
   }
+  function sizeUnits() {
+    var w = app.clientWidth || window.innerWidth, h = app.clientHeight || window.innerHeight;
+    app.style.setProperty('--u', clamp(Math.min(w / 108, h / 58), 3.6, 8).toFixed(2) + 'px');
+  }
+  // The game is landscape only. In portrait, or before the first tap, a full-screen card sits on top and the game is paused.
+  function checkGate() {
+    var w = app.clientWidth || window.innerWidth, h = app.clientHeight || window.innerHeight;
+    if (h > w) {
+      intro.setAttribute('data-state', 'rotate'); intro.hidden = false; gate = true;
+      keys.up = keys.down = keys.left = keys.right = 0;
+    } else if (!started) {
+      intro.setAttribute('data-state', 'welcome'); intro.hidden = false; gate = true;
+    } else if (gate) {
+      intro.hidden = true; gate = false; last = performance.now();
+    }
+    setPaused();
+  }
+  // Browsers only allow an orientation lock in fullscreen after a tap (Android Chrome). Elsewhere this quietly does nothing.
+  function lockLandscape() {
+    try {
+      var el = document.documentElement;
+      var p = el.requestFullscreen ? el.requestFullscreen() : null;
+      Promise.resolve(p).catch(function () {}).then(function () {
+        if (window.screen && screen.orientation && screen.orientation.lock) return screen.orientation.lock('landscape');
+      }).catch(function () {});
+    } catch (e) {}
+  }
+  function startGame() {
+    if (started) return;
+    started = true; app.classList.add('playing');
+    initAudio(); lockLandscape(); checkGate();
+  }
+  $('btnStart').addEventListener('click', startGame);
   function resize() {
-    layout();
+    sizeUnits();
     var w = app.clientWidth || window.innerWidth, h = app.clientHeight || window.innerHeight;
     renderer.setPixelRatio(S.hq ? Math.min(window.devicePixelRatio || 1, 2) : 1);
     renderer.setSize(w, h, false);
     camera.aspect = w / h; camera.updateProjectionMatrix();
+    checkGate();
   }
   window.addEventListener('resize', resize);
   window.addEventListener('orientationchange', function () { setTimeout(resize, 200); });
@@ -947,7 +1004,7 @@ body {
     render(dt); hud(); audioTick();
   }
 
-  reset(); applyS(); syncSheet();
+  reset(); introMeta(); applyS(); syncSheet();
   renderer.render(scene, camera);
   requestAnimationFrame(frame);
 })();
