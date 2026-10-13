@@ -808,15 +808,16 @@ body {
     else if (e.code === 'Escape') openSheet();
   });
   window.addEventListener('keyup', function (e) { var m = map[e.code]; if (m) setKey(m, 0); });
-  window.addEventListener('blur', function () { keys.up = keys.down = keys.left = keys.right = 0; });
+  window.addEventListener('blur', function () { keys.up = keys.down = keys.left = keys.right = 0; releaseAll(true); });
 
   // Each pad is one touch zone. A finger picks the half it is in, so sliding between left and right works,
   // the gap between the keys counts, and a very quick tap is held for a few frames so it is never missed.
   var latchUntil = { up: 0, down: 0, left: 0, right: 0 };
   function setKey(k, v) { if (v && !keys[k]) latchUntil[k] = performance.now() + 70; keys[k] = v ? 1 : 0; }
   function isDown(k) { return keys[k] || performance.now() < latchUntil[k]; }
+  var zones = [], touching = 0, sawTouch = false;
   function bindZone(zone, a, b, vertical) {
-    var ptrs = {};
+    var ptrs = {}, times = {}, types = {};
     function pick(e) {
       var r = zone.getBoundingClientRect();
       return (vertical ? e.clientY < r.top + r.height / 2 : e.clientX < r.left + r.width / 2) ? a : b;
@@ -828,24 +829,43 @@ body {
       zone.querySelector('[data-k="' + a + '"]').classList.toggle('on', ha);
       zone.querySelector('[data-k="' + b + '"]').classList.toggle('on', hb);
     }
+    function drop(id) { if (ptrs[id] !== undefined) { delete ptrs[id]; delete times[id]; delete types[id]; apply(); } }
     zone.addEventListener('pointerdown', function (e) {
       e.preventDefault();
       try { zone.setPointerCapture(e.pointerId); } catch (x) {}
-      ptrs[e.pointerId] = pick(e); initAudio(); apply();
+      ptrs[e.pointerId] = pick(e); times[e.pointerId] = performance.now(); types[e.pointerId] = e.pointerType;
+      initAudio(); apply();
     });
     zone.addEventListener('pointermove', function (e) {
       if (ptrs[e.pointerId] === undefined) return;
       var k = pick(e);
       if (k !== ptrs[e.pointerId]) { ptrs[e.pointerId] = k; apply(); }
     });
-    function end(e) { if (ptrs[e.pointerId] !== undefined) { delete ptrs[e.pointerId]; apply(); } }
-    zone.addEventListener('pointerup', end);
-    zone.addEventListener('pointercancel', end);
-    zone.addEventListener('lostpointercapture', end);
     zone.addEventListener('contextmenu', function (e) { e.preventDefault(); });
+    // Let go of everything (all=true), or only touches the screen no longer reports (all=false).
+    zone.release = function (all) {
+      var now = performance.now(), changed = false;
+      for (var id in ptrs) {
+        if (all || (types[id] === 'touch' && now - times[id] > 150)) { delete ptrs[id]; delete times[id]; delete types[id]; changed = true; }
+      }
+      if (changed) apply();
+    };
+    zone.drop = drop;
+    zones.push(zone);
   }
   bindZone(document.querySelector('.pad.l'), 'up', 'down', true);
   bindZone(document.querySelector('.pad.r'), 'left', 'right', false);
+
+  // Safety nets so a lost "finger up" can never leave a key stuck down.
+  function releaseAll(all) { zones.forEach(function (z) { z.release(all); }); }
+  ['pointerup', 'pointercancel', 'lostpointercapture'].forEach(function (n) {
+    window.addEventListener(n, function (e) { zones.forEach(function (z) { z.drop(e.pointerId); }); }, true);
+  });
+  ['touchstart', 'touchmove', 'touchend', 'touchcancel'].forEach(function (n) {
+    window.addEventListener(n, function (e) { sawTouch = true; touching = e.touches.length; }, { capture: true, passive: true });
+  });
+  document.addEventListener('visibilitychange', function () { if (document.hidden) releaseAll(true); });
+  window.addEventListener('pagehide', function () { releaseAll(true); });
 
   /* ---------- settings sheet ---------- */
   var sheet = $('sheet');
@@ -860,7 +880,7 @@ body {
     $('gearMode').textContent = S.manual ? 'Manual' : 'Auto';
     resize();
   }
-  function openSheet() { sheetOpen = true; setPaused(); syncSheet(); sheet.hidden = false; keys.up = keys.down = keys.left = keys.right = 0; }
+  function openSheet() { sheetOpen = true; setPaused(); syncSheet(); sheet.hidden = false; keys.up = keys.down = keys.left = keys.right = 0; releaseAll(true); }
   function closeSheet() { sheetOpen = false; setPaused(); sheet.hidden = true; last = performance.now(); }
   $('btnSettings').addEventListener('click', openSheet);
   $('setDone').addEventListener('click', closeSheet);
@@ -981,7 +1001,7 @@ body {
     var w = app.clientWidth || window.innerWidth, h = app.clientHeight || window.innerHeight;
     if (h > w) {
       intro.setAttribute('data-state', 'rotate'); intro.hidden = false; gate = true;
-      keys.up = keys.down = keys.left = keys.right = 0;
+      keys.up = keys.down = keys.left = keys.right = 0; releaseAll(true);
     } else if (!started) {
       intro.setAttribute('data-state', 'welcome'); intro.hidden = false; gate = true;
     } else if (gate) {
@@ -1024,6 +1044,7 @@ body {
     var dt = (now - last) / 1000; last = now;
     if (!(dt > 0)) return;
     if (dt > 0.1) dt = 0.1;
+    if (sawTouch && touching === 0) releaseAll(false);
     fpsTick(dt, now);
     if (!paused) {
       var n = Math.max(1, Math.ceil(dt / 0.01)), h = dt / n;
