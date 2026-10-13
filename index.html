@@ -105,10 +105,11 @@ body {
 
 .touch { display: none; }
 @media (pointer: coarse) { .touch { display: flex; } .kbhint { display: none !important; } }
-.pad { position: absolute; bottom: var(--pad); display: flex; gap: calc(var(--u) * 1.6); pointer-events: none; }
+.pad { position: absolute; bottom: var(--pad); display: flex; gap: calc(var(--u) * 1.6); pointer-events: auto; touch-action: none; -webkit-touch-callout: none; }
+.pad::before { content: ''; position: absolute; inset: calc(var(--u) * -1.8); }
 .pad.l { left: var(--padL); flex-direction: column; }
 .pad.r { right: var(--padR); }
-.key { pointer-events: auto; width: var(--key); height: var(--key); display: grid; place-items: center; padding: 0; color: var(--ink); touch-action: none; cursor: pointer; }
+.key { pointer-events: none; width: var(--key); height: var(--key); display: grid; place-items: center; padding: 0; color: var(--ink); touch-action: none; cursor: pointer; }
 .key svg { width: 42%; height: 42%; fill: none; stroke: currentColor; stroke-width: 2.4; stroke-linecap: round; stroke-linejoin: round; opacity: 0.85; }
 .key.on { background: rgba(255, 255, 255, 0.42); transform: scale(0.96); }
 
@@ -696,9 +697,10 @@ body {
   /* ---------- physics ---------- */
   function rn(g, v) { return clamp(Math.abs(v) / GT[g - 1], 0, 1.1); }
   function step(dt) {
-    var up = keys.up && !keys.down, dn = keys.down && !keys.up;
+    var uD = isDown('up'), dD = isDown('down'), up = uD && !dD, dn = dD && !uD;
     if (up && !running) { running = true; $('hint').hidden = true; }
-    var tgt = (keys.right ? 1 : 0) - (keys.left ? 1 : 0), rate = tgt === 0 ? 6 : 3.2;
+    var tgt = (isDown('right') ? 1 : 0) - (isDown('left') ? 1 : 0);
+    var rate = tgt === 0 ? 9 : (car.steer * tgt < 0 ? 16 : 6.5);
     car.steer += clamp(tgt - car.steer, -rate * dt, rate * dt);
 
     // gearbox
@@ -799,25 +801,51 @@ body {
     }
     if (paused) { if (e.code === 'Escape' && sheetOpen) closeSheet(); return; }
     var m = map[e.code];
-    if (m) { keys[m] = 1; initAudio(); e.preventDefault(); return; }
+    if (m) { setKey(m, 1); initAudio(); e.preventDefault(); return; }
     if (e.code === 'KeyR') reset();
     else if (e.code === 'KeyE' && S.manual && car.gear < 6) car.gear++;
     else if (e.code === 'KeyQ' && S.manual && car.gear > 1) car.gear--;
     else if (e.code === 'Escape') openSheet();
   });
-  window.addEventListener('keyup', function (e) { var m = map[e.code]; if (m) keys[m] = 0; });
+  window.addEventListener('keyup', function (e) { var m = map[e.code]; if (m) setKey(m, 0); });
   window.addEventListener('blur', function () { keys.up = keys.down = keys.left = keys.right = 0; });
 
-  Array.prototype.forEach.call(document.querySelectorAll('.key'), function (b) {
-    var kk = b.getAttribute('data-k');
-    function on(e) { e.preventDefault(); keys[kk] = 1; b.classList.add('on'); initAudio(); try { b.setPointerCapture(e.pointerId); } catch (x) {} }
-    function off() { keys[kk] = 0; b.classList.remove('on'); }
-    b.addEventListener('pointerdown', on);
-    b.addEventListener('pointerup', off);
-    b.addEventListener('pointercancel', off);
-    b.addEventListener('lostpointercapture', off);
-    b.addEventListener('contextmenu', function (e) { e.preventDefault(); });
-  });
+  // Each pad is one touch zone. A finger picks the half it is in, so sliding between left and right works,
+  // the gap between the keys counts, and a very quick tap is held for a few frames so it is never missed.
+  var latchUntil = { up: 0, down: 0, left: 0, right: 0 };
+  function setKey(k, v) { if (v && !keys[k]) latchUntil[k] = performance.now() + 70; keys[k] = v ? 1 : 0; }
+  function isDown(k) { return keys[k] || performance.now() < latchUntil[k]; }
+  function bindZone(zone, a, b, vertical) {
+    var ptrs = {};
+    function pick(e) {
+      var r = zone.getBoundingClientRect();
+      return (vertical ? e.clientY < r.top + r.height / 2 : e.clientX < r.left + r.width / 2) ? a : b;
+    }
+    function apply() {
+      var ha = false, hb = false;
+      for (var id in ptrs) { if (ptrs[id] === a) ha = true; else hb = true; }
+      setKey(a, ha); setKey(b, hb);
+      zone.querySelector('[data-k="' + a + '"]').classList.toggle('on', ha);
+      zone.querySelector('[data-k="' + b + '"]').classList.toggle('on', hb);
+    }
+    zone.addEventListener('pointerdown', function (e) {
+      e.preventDefault();
+      try { zone.setPointerCapture(e.pointerId); } catch (x) {}
+      ptrs[e.pointerId] = pick(e); initAudio(); apply();
+    });
+    zone.addEventListener('pointermove', function (e) {
+      if (ptrs[e.pointerId] === undefined) return;
+      var k = pick(e);
+      if (k !== ptrs[e.pointerId]) { ptrs[e.pointerId] = k; apply(); }
+    });
+    function end(e) { if (ptrs[e.pointerId] !== undefined) { delete ptrs[e.pointerId]; apply(); } }
+    zone.addEventListener('pointerup', end);
+    zone.addEventListener('pointercancel', end);
+    zone.addEventListener('lostpointercapture', end);
+    zone.addEventListener('contextmenu', function (e) { e.preventDefault(); });
+  }
+  bindZone(document.querySelector('.pad.l'), 'up', 'down', true);
+  bindZone(document.querySelector('.pad.r'), 'left', 'right', false);
 
   /* ---------- settings sheet ---------- */
   var sheet = $('sheet');
